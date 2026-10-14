@@ -21,3 +21,4 @@
 | HU-E3-02 | Como gerente, quiero acceder a todos los módulos con un solo login | E3 | Alta | 3 |
 
 ## Total de puntos en este extracto: 27
+ 
