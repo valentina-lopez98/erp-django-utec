@@ -87,13 +87,9 @@ cobertura de pruebas ≥ 15 tests de modelo.
 | Documentación | |
 | **Total Espiral 2** | |
 
----
-
 ## 8. Aprobación formal del diagrama ER
 
 | Rol | Nombre | Fecha | Observaciones |
 |---|---|---|---|
-| Desarrollador | [Nombre] | | |
-| **Asesor (PO)** | **MC. Román Fernando López González** | | |
-
-> ⚠️ **La Espiral 2 (W05) no puede iniciar sin la aprobación registrada aquí.**
+| Desarrollador | [Nombre] | _valentina__/_lopez__/__gasca___ | |
+| **Asesor (PO)** | **MC. Román Fernando López González** | _14__/_10__/___26__ | Aprobado ✅ |
