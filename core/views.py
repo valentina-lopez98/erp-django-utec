@@ -1,50 +1,43 @@
-# core/views.py
-"""Vistas principales del proyecto ERP — W02.
 
-Migración: HttpResponse → render() con templates y contexto.
-"""
+# core/views.py
+"""Vistas principales del proyecto ERP — W02."""
+
 from django.shortcuts import render
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 
 
 def bienvenida(request):
-    """Página de inicio del ERP con tarjetas de módulos.
+    """Página de inicio del ERP con tarjetas de módulos."""
 
-    Context:
-        modulos (list): Lista de dicts con icono, nombre, url y descripcion.
-
-    Returns:
-        HttpResponse con template bienvenida.html.
-    """
-    modulos = [
+    modulos_config = [
         {
             'nombre': 'Productos',
             'icono': '📦',
-            'url': reverse('productos:inicio'),
+            'ruta': 'productos:inicio',
             'descripcion': 'Inventario, precios y stock',
         },
         {
             'nombre': 'Clientes',
             'icono': '👥',
-            'url': reverse('clientes:inicio'),
+            'ruta': 'clientes:inicio',
             'descripcion': 'Cartera y gestión de clientes',
         },
         {
             'nombre': 'Proveedores',
             'icono': '🏭',
-            'url': reverse('proveedores:inicio'),
+            'ruta': 'proveedores:inicio',
             'descripcion': 'Red de proveedores',
         },
         {
             'nombre': 'Ventas',
             'icono': '💰',
-            'url': reverse('ventas:inicio'),
+            'ruta': 'ventas:inicio',
             'descripcion': 'Pedidos, facturas y cobros',
         },
         {
             'nombre': 'Reportes',
             'icono': '📊',
-            'url': reverse('reportes:inicio'),
+            'ruta': 'reportes:inicio',
             'descripcion': 'Dashboard y analítica',
         },
         {
@@ -54,4 +47,20 @@ def bienvenida(request):
             'descripcion': 'Panel de administración Django',
         },
     ]
+
+    modulos = []
+
+    for modulo in modulos_config:
+        modulo = modulo.copy()
+
+        if 'ruta' in modulo:
+            try:
+                modulo['url'] = reverse(modulo['ruta'])
+            except NoReverseMatch:
+                # Evita que una ruta inexistente provoque un error 500.
+                modulo['url'] = '#'
+            del modulo['ruta']
+
+        modulos.append(modulo)
+
     return render(request, 'bienvenida.html', {'modulos': modulos})
