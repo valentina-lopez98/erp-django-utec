@@ -1,4 +1,5 @@
 # core/settings.py
+import dj_database_url
 import environ
 from pathlib import Path
 
@@ -11,6 +12,11 @@ environ.Env.read_env(BASE_DIR / '.env')
 SECRET_KEY    = env('SECRET_KEY', default='dev-key-insegura-solo-para-desarrollo')
 DEBUG         = env('DEBUG', default=True)
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+
+# Render define RENDER_EXTERNAL_HOSTNAME automaticamente (tu-app.onrender.com)
+RENDER_HOST = env('RENDER_EXTERNAL_HOSTNAME', default='')
+if RENDER_HOST:
+    ALLOWED_HOSTS.append(RENDER_HOST)
 
 # ── Aplicaciones ──────────────────────────────────────────────────────────
 INSTALLED_APPS = [
@@ -70,12 +76,18 @@ TEMPLATES = [
 ]
 
 # ── Base de datos ─────────────────────────────────────────────────────────
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DATABASE_URL = env('DATABASE_URL', default='')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # ── Validadores de contraseña ─────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
@@ -222,9 +234,13 @@ AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
-# ── ALLAUTH (versión 65+, sin ajustes obsoletos) ──────────────────────────
-ACCOUNT_LOGIN_METHODS      = {'username'}
-ACCOUNT_SIGNUP_FIELDS      = ['username*', 'email', 'password1*', 'password2*']  # email opcional
+# ── ALLAUTH (compatible con django-allauth 0.63.x) ────────────────────────
+ACCOUNT_AUTHENTICATION_METHOD = 'username'
+ACCOUNT_EMAIL_REQUIRED     = False
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 ACCOUNT_LOGOUT_ON_GET      = True
 ACCOUNT_SESSION_REMEMBER   = True
+
+# ── Produccion (Render): proxy HTTPS y CSRF ───────────────────────────────
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS    = ['https://*.onrender.com']
