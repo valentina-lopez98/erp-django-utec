@@ -1,21 +1,38 @@
-# clientes/views.py
-"""Vistas de la app clientes — W07.
+"""Vistas de la app clientes — W07/W08.
 
 Lectura: ListView y DetailView.
-Escritura (Create/Update/Delete): W08.
+Escritura: CreateView, UpdateView y DeleteView.
 """
-from django.views.generic import DetailView, ListView
-
-from .models import Cliente
-
-# clientes/views.py — agregar imports al inicio:
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.urls import reverse_lazy
 from django.views.generic import (
     CreateView, DeleteView, DetailView, ListView, UpdateView
 )
+
 from .forms import ClienteForm
+from .models import Cliente
+
+
+class ClienteListView(ListView):
+    """Lista paginada de clientes activos."""
+
+    model               = Cliente
+    template_name       = 'clientes/lista.html'
+    context_object_name = 'clientes'
+    paginate_by         = 20
+
+    def get_queryset(self):
+        return Cliente.objects.filter(activo=True).order_by('nombre')
+
+
+class ClienteDetailView(DetailView):
+    """Detalle de un cliente."""
+
+    model               = Cliente
+    template_name       = 'clientes/detalle.html'
+    context_object_name = 'cliente'
+    pk_url_kwarg        = 'cliente_id'   # la URL usa <int:cliente_id>
 
 
 class ClienteCreateView(LoginRequiredMixin, CreateView):
@@ -53,46 +70,17 @@ class ClienteUpdateView(LoginRequiredMixin, UpdateView):
         return response
 
 
-class ClienteDeleteView(LoginRequiredMixin, DeleteView):
-    """Confirmación y borrado de un cliente."""
+class ClienteDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
+    """Confirmación y borrado de un cliente (requiere permiso)."""
 
-    model         = Cliente
-    template_name = 'clientes/eliminar.html'
-    pk_url_kwarg  = 'cliente_id'
-    success_url   = reverse_lazy('clientes:lista')
+    model               = Cliente
+    template_name       = 'clientes/eliminar.html'
+    pk_url_kwarg        = 'cliente_id'
+    success_url         = reverse_lazy('clientes:lista')
+    permission_required = 'clientes.delete_cliente'
 
     def form_valid(self, form):
         nombre   = self.object.nombre
         response = super().form_valid(form)
         messages.success(self.request, f'Cliente "{nombre}" eliminado.')
         return response
-
-
-class ClienteListView(ListView):
-    """Lista paginada de clientes activos."""
-
-    model               = Cliente
-    template_name = 'clientes/lista.html'
-    context_object_name = 'clientes'
-    paginate_by         = 20
-
-    def get_queryset(self):
-        return Cliente.objects.filter(activo=True).order_by('nombre')
-
-
-class ClienteDetailView(DetailView):
-    """Detalle de un cliente con su historial de ventas."""
-
-    model               = Cliente
-    template_name       = 'clientes/detalle.html'
-    context_object_name = 'cliente'
-    pk_url_kwarg        = 'cliente_id'
-
-    def get_context_data(self, **kwargs):
-        """Agrega las ventas del cliente al contexto."""
-        ctx = super().get_context_data(**kwargs)
-        ctx['ventas'] = (
-            self.object.ventas
-            .order_by('-fecha')[:10]   # últimas 10 ventas
-        )
-        return ctx
