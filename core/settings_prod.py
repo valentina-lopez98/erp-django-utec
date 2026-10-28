@@ -58,10 +58,11 @@ SECURE_CONTENT_TYPE_NOSNIFF    = True
 SECURE_REFERRER_POLICY         = 'same-origin'
 
 # ── ARCHIVOS ESTÁTICOS ─────────────────────────────────────────────────────
-# WhiteNoise ya configurado en settings.py; solo confirmar almacenamiento
+# WhiteNoise ya configurado en settings.py; storage NO estricto (sin Manifest)
+# para evitar "Missing staticfiles manifest entry" con django-jazzmin.
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
 }
 
 # ── LOGGING: solo WARNING y superiores en producción ──────────────────────
