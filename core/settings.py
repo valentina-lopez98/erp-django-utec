@@ -18,22 +18,23 @@ RENDER_HOST = env('RENDER_EXTERNAL_HOSTNAME', default='')
 if RENDER_HOST:
     ALLOWED_HOSTS.append(RENDER_HOST)
 
-# ── Aplicaciones ──────────────────────────────────────────────────────────
+# core/settings.py — actualizar INSTALLED_APPS (terceros):
 INSTALLED_APPS = [
-    'jazzmin',                              # debe ir ANTES de django.contrib.admin
-    'whitenoise.runserver_nostatic',        # debe ir ANTES de staticfiles
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',                 # requerido por allauth
+    'django.contrib.sites',
     # Terceros
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'rest_framework',
+    'rest_framework.authtoken',    # ← agregar
+    'whitenoise.runserver_nostatic',
     # Apps del ERP
     'clientes',
     'proveedores',
@@ -127,11 +128,17 @@ LOGIN_URL           = '/accounts/login/'
 LOGIN_REDIRECT_URL  = '/productos/'
 LOGOUT_REDIRECT_URL = '/'
 
-# ── DRF ───────────────────────────────────────────────────────────────────
+# core/settings.py — reemplazar la configuración REST_FRAMEWORK de W01:
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',   # para el navegador
+        'rest_framework.authentication.TokenAuthentication',     # para clientes externos
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
