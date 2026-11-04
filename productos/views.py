@@ -18,6 +18,7 @@ class ProductoListView(ListView):
     """Lista paginada de productos activos."""
 
     model               = Producto
+    form_class          = ProductoForm  
     template_name       = 'productos/lista.html'
     context_object_name = 'productos'
     paginate_by         = 20

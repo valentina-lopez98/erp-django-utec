@@ -15,7 +15,7 @@ class ProductoForm(forms.ModelForm):
     class Meta:
         model  = Producto
         fields = ['nombre', 'precio', 'stock', 'categoria',
-                  'proveedor', 'activo']
+                 'proveedor', 'activo', 'imagen'] 
         widgets = {
             'nombre':    forms.TextInput(
                 attrs={'class': 'erp-input',
