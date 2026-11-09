@@ -475,6 +475,14 @@
             💗 Ventas
         </a>
 
+        <!-- BOTÓN FACTURAR EN PDF -->
+        <a href="/ventas/factura-pdf/"
+           id="btnFacturarPdf"
+           class="erp-nav-link"
+           target="_blank">
+            📄 Facturar PDF
+        </a>
+
         <a href="{% url 'reportes:inicio' %}"
            class="erp-nav-link {% block nav_reportes %}{% endblock %}">
             💕 Reportes
@@ -567,6 +575,78 @@
                 // El tema seguirá funcionando aunque el almacenamiento esté bloqueado.
             }
         });
+    }
+})();
+</script>
+
+<!-- Enlace de Facturar PDF según la venta que se está viendo -->
+<script>
+(function () {
+    const btn = document.getElementById('btnFacturarPdf');
+    if (!btn) return;
+    const m = window.location.pathname.match(/\/ventas\/(\d+)\//);
+    if (m) {
+        btn.href = '/ventas/' + m[1] + '/factura-pdf/';
+    }
+})();
+</script>
+
+<!-- Botón Facturar PDF dentro de la página de la venta (junto a "Eliminar venta") -->
+<script>
+(function () {
+    const m = window.location.pathname.match(/\/ventas\/(\d+)\//);
+    if (!m) return;
+
+    const link = document.createElement('a');
+    link.href = '/ventas/' + m[1] + '/factura-pdf/';
+    link.target = '_blank';
+    link.className = 'btn-erp-gold';
+    link.id = 'btnFacturarPdfVenta';
+    link.textContent = '📄 Facturar PDF';
+
+    const del = document.querySelector('.erp-page-title .btn-erp-danger');
+    if (del) {
+        const target = del.closest('form') || del;
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-left:auto;';
+        target.parentNode.insertBefore(wrap, target);
+        wrap.appendChild(link);
+        wrap.appendChild(target);
+    } else {
+        const cont = document.querySelector('.erp-main .container');
+        if (cont) {
+            const box = document.createElement('div');
+            box.style.cssText = 'text-align:right;margin-bottom:1rem;';
+            box.appendChild(link);
+            cont.insertBefore(box, cont.firstChild);
+        }
+    }
+})();
+</script>
+
+<!-- Facturar PDF -->
+<script>
+(function () {
+    const m = window.location.pathname.match(/\/ventas\/(\d+)\//);
+    const nav = document.getElementById('btnFacturarPdf');
+    if (!m) { return; }
+    const url = '/ventas/' + m[1] + '/factura-pdf/';
+    if (nav) { nav.href = url; }
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.className = 'btn-erp-gold';
+    link.textContent = '\uD83D\uDCC4 Facturar PDF';
+
+    const del = document.querySelector('.erp-page-title .btn-erp-danger');
+    if (del) {
+        const target = del.closest('form') || del;
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-left:auto;';
+        target.parentNode.insertBefore(wrap, target);
+        wrap.appendChild(link);
+        wrap.appendChild(target);
     }
 })();
 </script>
