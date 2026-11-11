@@ -1,9 +1,8 @@
-# ventas/views.py
-"""Vistas de la app ventas.
+"""Vistas de la app ventas — W07/W08 + PDF W12.
 
-Lectura:   VentaListView y VentaDetailView (W07).
-Escritura: crear_venta, VentaDeleteView (W08).
-PDF:       venta_pdf (factura descargable).
+Lectura: VentaListView y VentaDetailView.
+Escritura: crear_venta (función) y VentaDeleteView.
+PDF: venta_pdf (xhtml2pdf, sin Docker).
 """
 import io
 from datetime import date
@@ -19,7 +18,6 @@ from django.views.generic import DeleteView, DetailView, ListView
 from xhtml2pdf import pisa
 
 from configuracion.models import ConfiguracionERP
-
 from .forms import DetalleVentaForm, VentaForm
 from .models import DetalleVenta, Venta
 
@@ -27,10 +25,10 @@ from .models import DetalleVenta, Venta
 class VentaListView(ListView):
     """Lista paginada de ventas en orden cronológico inverso."""
 
-    model = Venta
-    template_name = 'ventas/lista.html'
+    model               = Venta
+    template_name       = 'ventas/lista.html'
     context_object_name = 'ventas'
-    paginate_by = 20
+    paginate_by         = 20
 
     def get_queryset(self):
         """Pre-carga cliente para evitar N+1 en la tabla de ventas."""
@@ -42,20 +40,15 @@ class VentaListView(ListView):
 
 
 class VentaDetailView(DetailView):
-    """Detalle de una venta con todas sus líneas de producto."""
+    """Detalle de una venta."""
 
-    model = Venta
-    template_name = 'ventas/detalle.html'
+    model               = Venta
+    template_name       = 'ventas/detalle.html'
     context_object_name = 'venta'
-    pk_url_kwarg = 'venta_id'
+    pk_url_kwarg        = 'venta_id'   # la URL usa <int:venta_id>
 
     def get_queryset(self):
-        """Pre-carga cliente y prefetch líneas de detalle."""
-        return (
-            Venta.objects
-            .select_related('cliente')
-            .prefetch_related('detalles__producto')
-        )
+        return Venta.objects.select_related('cliente')
 
 
 @login_required
@@ -64,15 +57,15 @@ def crear_venta(request):
     """Crea un encabezado de venta con una línea de detalle.
 
     GET  → muestra los dos formularios vacíos.
-    POST → valida ambos, guarda si son correctos, muestra errores si no.
+    POST → valida ambos, guarda si correctos, muestra errores si no.
     """
-    venta_form = VentaForm(request.POST or None)
+    venta_form   = VentaForm(request.POST or None)
     detalle_form = DetalleVentaForm(request.POST or None)
 
     if request.method == 'POST':
         if venta_form.is_valid() and detalle_form.is_valid():
-            venta = venta_form.save()
-            detalle = detalle_form.save(commit=False)
+            venta         = venta_form.save()
+            detalle       = detalle_form.save(commit=False)
             detalle.venta = venta
             detalle.save()
             messages.success(
@@ -83,21 +76,22 @@ def crear_venta(request):
             return redirect('ventas:detalle', venta_id=venta.pk)
 
     return render(request, 'ventas/crear.html', {
-        'venta_form': venta_form,
+        'venta_form':   venta_form,
         'detalle_form': detalle_form,
     })
 
 
 class VentaDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
-    model = Venta
-    template_name = 'ventas/eliminar.html'
-    pk_url_kwarg = 'venta_id'
-    success_url = reverse_lazy('ventas:lista')
+    """Confirmación y borrado de una venta (requiere permiso)."""
+
+    model               = Venta
+    template_name       = 'ventas/eliminar.html'
+    pk_url_kwarg        = 'venta_id'
+    success_url         = reverse_lazy('ventas:lista')
     permission_required = 'ventas.delete_venta'
-    raise_exception = True
 
     def form_valid(self, form):
-        pk = self.object.pk
+        pk       = self.object.pk
         response = super().form_valid(form)
         messages.success(self.request, f'Venta #{pk} eliminada.')
         return response
@@ -105,12 +99,12 @@ class VentaDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView):
 
 @login_required
 def venta_pdf(request, venta_id: int):
-    """Genera y descarga la factura en PDF usando xhtml2pdf (sin Docker)."""
+    """Genera y descarga la factura en PDF usando xhtml2pdf sin Docker."""
     venta = get_object_or_404(
         Venta.objects
         .select_related('cliente')
         .prefetch_related('detalles__producto'),
-        pk=venta_id,
+        pk=venta_id
     )
     config = ConfiguracionERP.get_instance()
     context = {
@@ -119,10 +113,12 @@ def venta_pdf(request, venta_id: int):
         'hoy': date.today(),
     }
 
-    # Renderizar el HTML de la factura
-    html_string = render_to_string(
-        'ventas/factura_pdf.html', context, request=request
-    )
+    # Renderizar el HTML
+    html_string = render_to_string('ventas/factura_pdf.html', context, request=request)
+
+    # Preparar la respuesta HTTP tipo PDF
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="factura_{venta.pk:05d}.pdf"'
 
     # Convertir HTML a PDF en memoria
     buffer = io.BytesIO()
@@ -131,9 +127,5 @@ def venta_pdf(request, venta_id: int):
     if pisa_status.err:
         return HttpResponse('Error al generar el PDF', status=500)
 
-    # Preparar la respuesta HTTP tipo PDF
-    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = (
-        f'attachment; filename="factura_{venta.pk:05d}.pdf"'
-    )
+    response.write(buffer.getvalue())
     return response
