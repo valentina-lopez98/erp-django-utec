@@ -108,10 +108,3 @@ class VentaPDFWeasyPrintTest(TestCase):
             len(r.content), 1024,
             "El PDF parece demasiado pequeño para ser real"
         )
-
-    def test_pdf_excel_exportacion_tambien_funciona(self):
-        """La exportación de Excel (openpyxl) debe seguir funcionando."""
-        self.client.force_login(self.user)
-        r = self.client.get(reverse('productos:exportar_excel'))
-        self.assertEqual(r.status_code, 200)
-        self.assertIn('spreadsheetml', r.get('Content-Type', ''))

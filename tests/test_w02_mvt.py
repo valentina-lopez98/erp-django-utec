@@ -4,7 +4,7 @@ Ejecutar con:
     python manage.py test tests.test_w02_mvt --verbosity=2
 
 Resultado esperado:
-    Ran 12 tests in X.XXXs
+    Ran 13 tests in X.XXXs
     OK
 """
 from django.test import TestCase
@@ -26,26 +26,25 @@ class TemplatesRenderTest(TestCase):
         self.assertTemplateUsed(response, 'base.html')
 
     def test_productos_usa_template_correcto(self):
-        """La vista de productos debe usar productos/index.html."""
+        """La vista de productos debe usar productos/lista.html."""
         response = self.client.get(reverse('productos:inicio'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'productos/lista.html')
 
     def test_clientes_usa_template_correcto(self):
-        """La vista de clientes debe usar clientes/index.html."""
+        """La vista de clientes debe usar clientes/lista.html."""
         response = self.client.get(reverse('clientes:lista'))
         self.assertTemplateUsed(response, 'clientes/lista.html')
-        self.assertTemplateUsed(response, 'clientes/lista.html')
-    
+
     def test_proveedores_usa_template_correcto(self):
-        """La vista de proveedores debe usar proveedores/index.html."""
+        """La vista de proveedores debe usar proveedores/lista.html."""
         response = self.client.get(reverse('proveedores:inicio'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'proveedores/lista.html')
-    
+
     def test_ventas_usa_template_correcto(self):
-        """La vista de ventas debe usar ventas/index.html."""
-        response = self.client.get(reverse('ventas:inicio'))
+        """La vista de ventas debe usar ventas/lista.html."""
+        response = self.client.get(reverse('ventas:lista'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'ventas/lista.html')
 
@@ -102,7 +101,7 @@ class StaticFilesConfigTest(TestCase):
         """WhiteNoise debe ir DESPUÉS de SecurityMiddleware."""
         from django.conf import settings
         m = settings.MIDDLEWARE
-        idx_sec  = m.index('django.middleware.security.SecurityMiddleware')
-        idx_wn   = m.index('whitenoise.middleware.WhiteNoiseMiddleware')
+        idx_sec = m.index('django.middleware.security.SecurityMiddleware')
+        idx_wn = m.index('whitenoise.middleware.WhiteNoiseMiddleware')
         self.assertLess(idx_sec, idx_wn,
                         "SecurityMiddleware debe ir ANTES que WhiteNoise")
