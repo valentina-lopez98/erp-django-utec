@@ -1,95 +1,176 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Factura #{{ venta.pk }}</title>
-    <style>
-        @page {
-            size: letter portrait;
-            margin: 1.5cm;
-        }
-        body {
-            font-family: Helvetica, Arial, sans-serif;
-            font-size: 10pt;
-            color: #1A1A2E;
-        }
-        .header {
-            background-color: #0A2342;
-            color: #FFFFFF;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        .title {
-            font-size: 20pt;
-            color: #D4AF37;
-            font-weight: bold;
-        }
-        .tabla {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        .tabla th {
-            background-color: #0A2342;
-            color: #FFFFFF;
-            padding: 6px;
-            border-bottom: 2px solid #D4AF37;
-            text-align: left;
-        }
-        .tabla td {
-            padding: 6px;
-            border-bottom: 1px solid #C8D8EC;
-        }
-        .num { text-align: right; }
-        .total-box {
-            margin-top: 15px;
-            text-align: right;
-            font-size: 12pt;
-            font-weight: bold;
-            color: #B8860B;
-        }
-    </style>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: letter;
+    margin: 1.2cm;
+    background-color: #fdf1f8;
+  }
+  body {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    color: #5c2a45;
+    background-color: #fdf1f8;
+  }
+
+  /* Encabezado principal (como la barra "ERP VAL" de la web) */
+  .encabezado {
+    width: 100%;
+    background-color: #e8457f;
+    border-bottom: 2px dotted #ffffff;
+  }
+  .encabezado td {
+    padding: 16px 20px;
+    color: #ffffff;
+  }
+  .marca {
+    font-size: 22pt;
+    font-weight: bold;
+  }
+  .subtitulo {
+    font-size: 9pt;
+    color: #ffe0ec;
+  }
+  .numero-factura {
+    font-size: 16pt;
+    font-weight: bold;
+    text-align: right;
+  }
+
+  /* Línea punteada rosa, como los separadores de la web */
+  .separador {
+    border-top: 1.5px dotted #f08ab5;
+    margin: 12px 0;
+  }
+
+  /* Tarjetas de sección con barra rosa */
+  .seccion {
+    width: 100%;
+    background-color: #ffffff;
+    border: 1px solid #f8b4d0;
+    margin-bottom: 12px;
+  }
+  .seccion-titulo {
+    background-color: #f8b4d0;
+    color: #7a1f47;
+    font-weight: bold;
+    font-size: 11pt;
+    padding: 8px 14px;
+  }
+  .seccion-cuerpo {
+    padding: 10px 14px;
+  }
+  .etiqueta {
+    color: #a33a6a;
+    font-weight: bold;
+    width: 110px;
+  }
+
+  /* Tabla de productos */
+  .detalle {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .detalle th {
+    background-color: #f8b4d0;
+    color: #7a1f47;
+    font-weight: bold;
+    padding: 8px;
+    text-align: left;
+    border-bottom: 2px dotted #e8457f;
+  }
+  .detalle td {
+    padding: 8px;
+    border-bottom: 1px dotted #f5b8d2;
+    background-color: #ffffff;
+  }
+  .a-la-derecha {
+    text-align: right;
+  }
+
+  /* Total */
+  .total-etiqueta {
+    text-align: right;
+    color: #d6336c;
+    font-weight: bold;
+    font-size: 11pt;
+    padding: 10px 8px;
+  }
+  .total-monto {
+    text-align: right;
+    color: #d6336c;
+    font-weight: bold;
+    font-size: 14pt;
+    padding: 10px 8px;
+  }
+
+  .pie {
+    text-align: center;
+    color: #a33a6a;
+    font-size: 8pt;
+    margin-top: 18px;
+  }
+</style>
 </head>
 <body>
-    <div class="header">
-        <div class="title">FACTURA #{{ venta.pk }}</div>
-        <div>{{ config.nombre_empresa }}</div>
-        <div>Fecha: {{ venta.fecha|date:"d/m/Y H:i" }}</div>
-    </div>
 
-    <h3>Datos del Cliente</h3>
-    <p><strong>Cliente:</strong> {{ venta.cliente.nombre }}</p>
-    <p><strong>Correo:</strong> {{ venta.cliente.correo }}</p>
+  <table class="encabezado">
+    <tr>
+      <td>
+        <div class="marca">ERP VAL</div>
+        <div class="subtitulo">UTEC Celaya</div>
+      </td>
+      <td>
+        <div class="numero-factura">FACTURA #{{ venta.id }}</div>
+        <div class="subtitulo" style="text-align:right;">Mi Empresa ERP</div>
+      </td>
+    </tr>
+  </table>
 
-    <table class="tabla">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Producto</th>
-                <th class="num">Precio Unit.</th>
-                <th class="num">Cant.</th>
-                <th class="num">Subtotal</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for detalle in venta.detalles.all %}
-            <tr>
-                <td>{{ forloop.counter }}</td>
-                <td>{{ detalle.producto.nombre }}</td>
-                <td class="num">${{ detalle.precio_unitario }}</td>
-                <td class="num">{{ detalle.cantidad }}</td>
-                <td class="num">${{ detalle.subtotal }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="5" style="text-align:center;">Sin detalles registrados.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+  <div class="separador"></div>
 
-    <div class="total-box">
-        TOTAL: ${{ venta.total }} {{ config.moneda }}
-    </div>
+  <table class="seccion">
+    <tr><td class="seccion-titulo">Datos de la venta</td></tr>
+    <tr><td class="seccion-cuerpo">
+      <table>
+        <tr><td class="etiqueta">Fecha</td><td>{{ venta.fecha|date:"d/m/Y H:i" }}</td></tr>
+        <tr><td class="etiqueta">Cliente</td><td>{{ venta.cliente }}</td></tr>
+        <tr><td class="etiqueta">Correo</td><td>{{ venta.cliente.email }}</td></tr>
+      </table>
+    </td></tr>
+  </table>
+
+  <table class="seccion">
+    <tr><td class="seccion-titulo">Líneas de detalle</td></tr>
+    <tr><td class="seccion-cuerpo">
+      <table class="detalle">
+        <tr>
+          <th>#</th>
+          <th>Producto</th>
+          <th class="a-la-derecha">Precio unit.</th>
+          <th class="a-la-derecha">Cant.</th>
+          <th class="a-la-derecha">Subtotal</th>
+        </tr>
+        <!-- Aquí va tu bucle de líneas, por ejemplo {% for l in lineas %} ... {% endfor %} -->
+        <tr>
+          <td>1</td>
+          <td>Bissu</td>
+          <td class="a-la-derecha">$500.00</td>
+          <td class="a-la-derecha">1</td>
+          <td class="a-la-derecha">$500.00</td>
+        </tr>
+        <tr>
+          <td colspan="3"></td>
+          <td class="total-etiqueta">Total:</td>
+          <td class="total-monto">$500.00 MXN</td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+
+  <div class="pie">Gracias por tu compra · ERP VAL · UTEC Celaya</div>
+
 </body>
 </html>
