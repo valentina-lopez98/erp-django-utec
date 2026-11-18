@@ -1,18 +1,3 @@
-# catalogo/views.py — agregar imports al inicio:
-import stripe
-from django.conf import settings
-from django.contrib.auth.decorators import login_required
-
-from ventas.models import DetalleVenta, Pedido
-from .checkout_utils import (
-    armar_items,
-    calcular_totales,
-    generar_numero_pedido,
-    obtener_o_crear_cliente,
-)
-
-# Configurar la clave secreta de Stripe
-stripe.api_key = settings.STRIPE_SECRET_KEY
 # catalogo/views.py
 """Vistas del módulo de catálogo y carrito — W13.
 
@@ -31,16 +16,28 @@ Estructura del carrito en sesión:
     }
 """
 
-
 from decimal import Decimal
 
+import stripe
+from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView
 
 from productos.models import Producto
+from ventas.models import DetalleVenta, Pedido
 
+from .checkout_utils import (
+    armar_items,
+    calcular_totales,
+    generar_numero_pedido,
+    obtener_o_crear_cliente,
+)
 from .filters import ProductoFilter
+
+# Configurar la clave secreta de Stripe
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 # ── CATÁLOGO ───────────────────────────────────────────────────────────────
@@ -205,7 +202,8 @@ def vaciar_carrito(request):
         messages.info(request, 'Carrito vaciado.')
     return redirect('catalogo:carrito')
 
-# catalogo/views.py — agregar al final:
+
+# ── CHECKOUT ────────────────────────────────────────────────────────────────
 
 @login_required
 def checkout(request):
@@ -214,9 +212,9 @@ def checkout(request):
     GET:  Muestra resumen del carrito con IVA calculado.
           No crea PaymentIntent (espera a POST).
 
-    POST: Valida carrito → crea Pedido → crea PaymentIntent →
-          retorna client_secret al template para que Stripe.js
-          confirme el pago del lado del cliente.
+    POST: Valida carrito → crea Pedido (con snapshot del carrito) →
+          crea PaymentIntent → retorna client_secret al template para
+          que Stripe.js confirme el pago del lado del cliente.
 
     Redirige a /catalogo/ si el carrito está vacío.
     """
@@ -234,13 +232,26 @@ def checkout(request):
             # ── 1. Vincular usuario con Cliente del ERP ────────────────
             cliente = obtener_o_crear_cliente(request.user)
 
-            # ── 2. Crear el Pedido en estado "pendiente" ───────────────
+            # ── 2. Crear el Pedido con snapshot del carrito ────────────
             numero = generar_numero_pedido()
+
+            # Construir el snapshot: lista de dicts serializables
+            snapshot = [
+                {
+                    'producto_id': int(prod_id),
+                    'nombre':      datos['nombre'],
+                    'cantidad':    int(datos['cantidad']),
+                    'precio':      datos['precio'],   # ya es str
+                }
+                for prod_id, datos in carrito.items()
+            ]
+
             pedido = Pedido.objects.create(
-                numero_pedido = numero,
-                cliente       = cliente,
-                estado        = 'pendiente',
-                total_pagado  = totales['total'],
+                numero_pedido  = numero,
+                cliente        = cliente,
+                estado         = 'pendiente',
+                total_pagado   = totales['total'],
+                items_snapshot = snapshot,            # ← nuevo
             )
 
             # ── 3. Crear PaymentIntent en Stripe ───────────────────────
@@ -298,7 +309,6 @@ def pago_exitoso(request, pedido_id: int):
     Vacía el carrito de la sesión y muestra el número de pedido.
     Stripe redirige aquí después de `stripe.confirmCardPayment` exitoso.
     """
-    from django.shortcuts import get_object_or_404
     pedido = get_object_or_404(Pedido, pk=pedido_id)
 
     # Vaciar el carrito al confirmar el pago
