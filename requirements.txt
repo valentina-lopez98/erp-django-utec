@@ -45,9 +45,11 @@ pyphen==0.18.1
 python-bidi==0.6.12
 python-dateutil==2.9.0.post0
 reportlab==4.0.9
+requests==2.34.2
 s3transfer==0.19.3
 six==1.17.0
 sqlparse==0.6.0
+stripe==16.1.0
 svglib==1.5.1
 tinycss2==1.5.1
 typing_extensions==4.16.0
