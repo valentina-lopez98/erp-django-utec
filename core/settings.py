@@ -19,6 +19,7 @@ if RENDER_HOST:
     ALLOWED_HOSTS.append(RENDER_HOST)
 
 # core/settings.py — actualizar INSTALLED_APPS (terceros):
+# core/settings.py — actualizar INSTALLED_APPS:
 INSTALLED_APPS = [
     'jazzmin',
     'django.contrib.admin',
@@ -33,7 +34,8 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'rest_framework',
-    'rest_framework.authtoken',    # ← agregar
+    'rest_framework.authtoken',
+    'django_filters',              # ← nuevo (nombre de app es django_filters)
     'whitenoise.runserver_nostatic',
     # Apps del ERP
     'clientes',
@@ -42,7 +44,9 @@ INSTALLED_APPS = [
     'ventas',
     'reportes',
     'configuracion',
+    'catalogo',                    # ← nuevo
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -60,6 +64,7 @@ ROOT_URLCONF = 'core.urls'
 WSGI_APPLICATION = 'core.wsgi.application'
 
 # ── Templates ─────────────────────────────────────────────────────────────
+# core/settings.py — actualizar TEMPLATES[0]['OPTIONS']['context_processors']:
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -68,13 +73,16 @@ TEMPLATES = [
         'OPTIONS': {
             'context_processors': [
                 'django.template.context_processors.debug',
-                'django.template.context_processors.request',   # requerido por allauth
+                'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # Context processor del carrito — W13
+                'catalogo.context_processors.carrito_info',
             ],
         },
     },
 ]
+
 
 # ── Base de datos ─────────────────────────────────────────────────────────
 DATABASE_URL = env('DATABASE_URL', default='')
