@@ -3,17 +3,24 @@
 Lectura: VentaListView y VentaDetailView.
 Escritura: crear_venta (función) y VentaDeleteView.
 PDF: venta_pdf (xhtml2pdf, sin Docker).
+Reporte: enviar_reporte_ventas (CSV por correo).
 """
+import csv
 import io
-from datetime import date
+from datetime import date, timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.core.mail import EmailMessage
+from django.db.models import Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 from django.views.generic import DeleteView, DetailView, ListView
 from xhtml2pdf import pisa
 
@@ -129,3 +136,60 @@ def venta_pdf(request, venta_id: int):
 
     response.write(buffer.getvalue())
     return response
+
+
+@login_required
+@require_POST
+def enviar_reporte_ventas(request):
+    """Genera un CSV con las ventas de los últimos 30 días y lo envía por correo."""
+    destinatario = request.user.email or getattr(settings, 'ADMIN_EMAIL', '')
+    if not destinatario:
+        messages.error(request, 'Tu usuario no tiene correo configurado.')
+        return redirect('ventas:lista')
+
+    hoy = timezone.localdate()
+    desde = hoy - timedelta(days=30)
+    ventas_qs = (
+        Venta.objects
+        .select_related('cliente')
+        .filter(fecha__gte=desde)
+        .order_by('fecha')
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(['Venta', 'Fecha', 'Cliente', 'Total'])
+    for v in ventas_qs:
+        writer.writerow([
+            v.pk,
+            v.fecha.strftime('%Y-%m-%d'),
+            str(v.cliente) if v.cliente else '',
+            v.total,
+        ])
+
+    total_general = ventas_qs.aggregate(t=Sum('total'))['t'] or 0
+    writer.writerow([])
+    writer.writerow(['', '', 'TOTAL', total_general])
+
+    # utf-8-sig para que Excel muestre bien acentos y la ñ
+    contenido = buffer.getvalue().encode('utf-8-sig')
+
+    correo = EmailMessage(
+        subject=f'Reporte de ventas - {hoy:%Y-%m-%d}',
+        body=(
+            f'Adjunto el reporte de ventas de los últimos 30 días.\n'
+            f'Ventas: {ventas_qs.count()}\n'
+            f'Total: ${total_general:.2f}'
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[destinatario],
+    )
+    correo.attach(f'reporte_ventas_{hoy:%Y%m%d}.csv', contenido, 'text/csv')
+
+    try:
+        correo.send()
+        messages.success(request, f'Reporte enviado a {destinatario}.')
+    except Exception as exc:
+        messages.error(request, f'No se pudo enviar el reporte: {exc}')
+
+    return redirect('ventas:lista')
