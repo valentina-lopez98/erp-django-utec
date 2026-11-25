@@ -1,4 +1,4 @@
-# core/urls.py — agregar las rutas de API y token
+# core/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -14,40 +14,30 @@ from ventas.api_urls      import urlpatterns as ventas_api
 
 api_urlpatterns = (
     productos_api +
-    clientes_api  +
+    clientes_api +
     proveedores_api +
     ventas_api
 )
 
 urlpatterns = [
     path('admin/',      admin.site.urls),
-    path('',            views.bienvenida,             name='inicio'),
-    path('accounts/',   include('allauth.urls')),
-    # API REST
-    path('api/',        include((api_urlpatterns, 'api'))),
-    path('api/auth/token/', obtain_auth_token, name='api_token'),
-    # Apps del ERP (interfaz web)
-    path('clientes/',    include('clientes.urls',    namespace='clientes')),
-    path('proveedores/', include('proveedores.urls', namespace='proveedores')),
-    path('productos/',   include('productos.urls',   namespace='productos')),
-    path('ventas/',      include('ventas.urls',       namespace='ventas')),
-    path('reportes/',    include('reportes.urls',     namespace='reportes')),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('',            views.bienvenida, name='inicio'),
 
-# core/urls.py — agregar la ruta del catálogo:
-urlpatterns = [
-    path('admin/',      admin.site.urls),
-    path('',            views.bienvenida,             name='inicio'),
+    # Autenticación (allauth): login, logout, registro y restablecimiento
+    # Restablecimiento: /accounts/password/reset/
     path('accounts/',   include('allauth.urls')),
+
     # API REST
     path('api/',        include((api_urlpatterns, 'api'))),
     path('api/auth/token/', obtain_auth_token, name='api_token'),
-    # E-commerce público — W13
+
+    # E-commerce público
     path('catalogo/',   include('catalogo.urls', namespace='catalogo')),
+
     # Apps del ERP (interfaz interna)
     path('clientes/',    include('clientes.urls',    namespace='clientes')),
     path('proveedores/', include('proveedores.urls', namespace='proveedores')),
     path('productos/',   include('productos.urls',   namespace='productos')),
-    path('ventas/',      include('ventas.urls',       namespace='ventas')),
-    path('reportes/',    include('reportes.urls',     namespace='reportes')),
+    path('ventas/',      include('ventas.urls',      namespace='ventas')),
+    path('reportes/',    include('reportes.urls',    namespace='reportes')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
