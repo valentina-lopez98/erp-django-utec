@@ -195,7 +195,7 @@ def enviar_reporte_ventas(request):
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[destinatario],
     )
-    correo.attach(f'reporte_ventas_{hoy:%Y%m%d}.csv', contenido, 'text/csv')
+    correo.attach(f'reporte_ventas_{hoy:%Y%m%d}.csv', contenido, 'application/octet-stream')
 
     try:
         correo.send()
