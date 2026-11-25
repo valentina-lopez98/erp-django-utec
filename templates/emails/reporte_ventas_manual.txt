@@ -1,0 +1,6 @@
+Reporte de ventas de los últimos 30 días ({{ desde|date:"d/m/Y" }} al {{ hoy|date:"d/m/Y" }}).
+
+Ventas: {{ cantidad }}
+Total: ${{ total_general|floatformat:2 }}
+
+El detalle está en el archivo CSV adjunto.

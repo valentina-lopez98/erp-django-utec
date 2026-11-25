@@ -3,7 +3,7 @@
 Lectura: VentaListView y VentaDetailView.
 Escritura: crear_venta (función) y VentaDeleteView.
 PDF: venta_pdf (xhtml2pdf, sin Docker).
-Reporte: enviar_reporte_ventas (CSV por correo).
+Reporte: enviar_reporte_ventas (HTML + CSV por correo).
 """
 import csv
 import io
@@ -14,7 +14,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMultiAlternatives
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -141,7 +141,7 @@ def venta_pdf(request, venta_id: int):
 @login_required
 @require_POST
 def enviar_reporte_ventas(request):
-    """Genera un CSV con las ventas de los últimos 30 días y lo envía por correo."""
+    """Genera un reporte de ventas de los últimos 30 días y lo envía por correo (HTML + CSV)."""
     destinatario = request.user.email or getattr(settings, 'ADMIN_EMAIL', '')
     if not destinatario:
         messages.error(request, 'Tu usuario no tiene correo configurado.')
@@ -163,6 +163,7 @@ def enviar_reporte_ventas(request):
     writer = csv.writer(buffer)
     writer.writerow(['Venta', 'Fecha', 'Cliente', 'Total'])
 
+    filas = []
     total_general = Decimal('0')
     for v in ventas:
         total_venta = v.total  # propiedad calculada en el modelo
@@ -171,13 +172,16 @@ def enviar_reporte_ventas(request):
         fecha_v = v.fecha
         if timezone.is_aware(fecha_v):
             fecha_v = timezone.localtime(fecha_v)
+        fecha_txt = fecha_v.strftime('%Y-%m-%d')
+        cliente_txt = str(v.cliente) if v.cliente else ''
 
-        writer.writerow([
-            v.pk,
-            fecha_v.strftime('%Y-%m-%d'),
-            str(v.cliente) if v.cliente else '',
-            f'{total_venta:.2f}',
-        ])
+        writer.writerow([v.pk, fecha_txt, cliente_txt, f'{total_venta:.2f}'])
+        filas.append({
+            'pk': v.pk,
+            'fecha': fecha_txt,
+            'cliente': cliente_txt,
+            'total': total_venta,
+        })
 
     writer.writerow([])
     writer.writerow(['', '', 'TOTAL', f'{total_general:.2f}'])
@@ -185,16 +189,24 @@ def enviar_reporte_ventas(request):
     # utf-8-sig para que Excel muestre bien acentos y la ñ
     contenido = buffer.getvalue().encode('utf-8-sig')
 
-    correo = EmailMessage(
+    contexto = {
+        'filas': filas,
+        'cantidad': len(ventas),
+        'total_general': total_general,
+        'desde': desde,
+        'hoy': hoy,
+    }
+    # Plantillas propias del reporte manual (no las del reporte diario)
+    html_body = render_to_string('emails/reporte_ventas_manual.html', contexto)
+    texto_plano = render_to_string('emails/reporte_ventas_manual.txt', contexto)
+
+    correo = EmailMultiAlternatives(
         subject=f'Reporte de ventas - {hoy:%Y-%m-%d}',
-        body=(
-            f'Adjunto el reporte de ventas de los últimos 30 días.\n'
-            f'Ventas: {len(ventas)}\n'
-            f'Total: ${total_general:.2f}'
-        ),
+        body=texto_plano,
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[destinatario],
     )
+    correo.attach_alternative(html_body, 'text/html')
     correo.attach(f'reporte_ventas_{hoy:%Y%m%d}.csv', contenido, 'application/octet-stream')
 
     try:
