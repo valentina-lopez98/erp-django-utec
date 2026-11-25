@@ -1,5 +1,8 @@
 # core/settings.py
+from datetime import timedelta
+from celery.schedules import crontab
 import dj_database_url
+from datetime import timedelta   # ← necesario para CELERY_BEAT_SCHEDULE
 import environ
 from pathlib import Path
 
@@ -150,6 +153,7 @@ REST_FRAMEWORK = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+'anymail',    # ← agregar
 
 # ── JAZZMIN ───────────────────────────────────────────────────────────────
 JAZZMIN_SETTINGS = {
@@ -311,3 +315,70 @@ CELERY_TASK_DEFAULT_QUEUE = 'erp_django'
 
 # En modo EAGER, las excepciones de la tarea se propagan (útil en tests)
 CELERY_TASK_EAGER_PROPAGATES = True
+
+# core/settings.py — configuración de correo electrónico
+
+# ── CORREO ELECTRÓNICO ────────────────────────────────────────────────────
+# En desarrollo: usar el backend de consola (imprime en terminal)
+# En producción: anymail con SendGrid
+EMAIL_BACKEND = env(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.console.EmailBackend'
+)
+
+# Dirección del remitente visible en los correos
+# (en producción debe ser el remitente verificado en SendGrid)
+DEFAULT_FROM_EMAIL = env(
+    'DEFAULT_FROM_EMAIL',
+    default='ERP Django <noreply@erp-django.com>'
+)
+
+# Destinatario de las alertas de stock bajo.
+# Variable propia: NO se usa ADMINS porque Django enviaría por correo
+# los errores 500 de producción a esa dirección.
+ALERTAS_ADMIN_EMAIL = env('ADMIN_EMAIL', default='admin@erp-django.com')
+
+# URL pública del sitio (para los enlaces de los correos)
+# En Render: https://erp-django-utec.onrender.com
+SITE_URL = env('SITE_URL', default='http://127.0.0.1:8000')
+
+# Configuración de django-anymail (SendGrid)
+SENDGRID_API_KEY = env('SENDGRID_API_KEY', default='')
+ANYMAIL = {
+    'SENDGRID_API_KEY': SENDGRID_API_KEY,
+}
+
+# Hora del reporte diario (hora de México), configurable sin tocar código:
+#   Render → Environment → REPORTE_DIARIO_HORA=10:00
+# Default 21:00: el reporte resume el día en curso, así que va al cierre.
+REPORTE_DIARIO_HORA = env('REPORTE_DIARIO_HORA', default='21:00')
+try:
+    _rep_h, _rep_m = (int(x) for x in REPORTE_DIARIO_HORA.split(':'))
+    if not (0 <= _rep_h <= 23 and 0 <= _rep_m <= 59):
+        raise ValueError('hora fuera de rango')
+except ValueError:
+    _rep_h, _rep_m = 21, 0
+    REPORTE_DIARIO_HORA = '21:00'   # el pie del correo muestra la hora real
+
+CELERY_BEAT_SCHEDULE = {
+
+    # Verificar stock bajo cada hora
+    'verificar-stock-bajo-cada-hora': {
+        'task':     'ventas.verificar_stock_bajo',
+        'schedule': timedelta(hours=1),
+        'args':     (5,),   # umbral = 5 unidades
+        'options':  {'queue': 'erp_django'},
+    },
+
+    # Reporte de ventas diario (default 21:00, cierre del día, hora México)
+    'reporte-ventas-diario': {
+        'task':     'ventas.reporte_ventas_diario',
+        'schedule': crontab(hour=_rep_h, minute=_rep_m),
+        'options':  {'queue': 'erp_django'},
+    },
+
+}
+
+# Beat usa la zona horaria de Celery (no UTC). Normalmente ya existe en el
+# bloque CELERY_* de W16; si no está, agregarla:
+CELERY_TIMEZONE = TIME_ZONE   # 'America/Mexico_City'

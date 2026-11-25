@@ -1,27 +1,19 @@
 # ventas/tasks.py
-"""Tareas asíncronas de la app ventas — W16.
+"""Tareas asíncronas de la app ventas — W17.
 
-Las tareas con @shared_task son descubiertas automáticamente
-por celery.autodiscover_tasks() definido en core/celery.py.
+W17 implementa el envío real de correos con django-anymail + SendGrid.
 
-Estado de implementación:
-    W16: Estructura base — las tareas solo registran en el log.
-    W17: Se agrega SendGrid para envío real de correos.
-    W18: Se agregan tareas programadas con Celery Beat.
-
-Uso:
-    # Desde una vista (asíncrono — no bloquea la respuesta HTTP):
-    enviar_confirmacion_pedido.delay(pedido_id)
-
-    # Desde la línea de comandos (síncrono — para depuración):
-    python manage.py shell
-    >>> from ventas.tasks import enviar_confirmacion_pedido
-    >>> result = enviar_confirmacion_pedido.apply(args=[1])
-    >>> result.get()
+Idempotencia:
+    Pedido.correo_enviado=True previene envíos duplicados si la tarea
+    se llama más de una vez para el mismo pedido.
 """
 import logging
+from decimal import Decimal
 
 from celery import shared_task
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -29,95 +21,406 @@ logger = logging.getLogger(__name__)
 
 @shared_task(
     bind=True,
-    autoretry_for=(Exception,),  # ante una excepción inesperada, reintentar
-    max_retries=3,               # máximo 3 reintentos
-    default_retry_delay=60,      # esperar 60s antes de reintentar
+    max_retries=3,
+    default_retry_delay=60,
     name='ventas.enviar_confirmacion_pedido',
 )
 def enviar_confirmacion_pedido(self, pedido_id: int) -> dict:
     """Envía el correo de confirmación de pedido al cliente.
 
-    W16: Solo registra en el log (placeholder).
-    W17: Enviará correo real con SendGrid.
+    Garantías:
+        - Idempotente: si correo_enviado=True, aborta sin error.
+        - Retry automático hasta 3 veces en caso de fallo de SendGrid.
 
     Args:
         pedido_id: ID del Pedido confirmado.
 
     Returns:
-        dict con estado y pedido_id procesado.
+        dict con estado, pedido_id y correo del destinatario.
     """
-    from ventas.models import Pedido   # import local evita circularidad
+    from configuracion.models import ConfiguracionERP  # import local
+    from ventas.models        import Pedido             # import local
 
     try:
         pedido = Pedido.objects.select_related('cliente').get(pk=pedido_id)
     except Pedido.DoesNotExist:
         logger.error(
-            f'[Tarea enviar_confirmacion] Pedido {pedido_id} no existe.'
+            f'[correo_confirmacion] Pedido {pedido_id} no existe.'
         )
-        return {'estado': 'error', 'pedido_id': pedido_id}
+        return {'estado': 'error', 'razon': 'Pedido no encontrado'}
 
-    # W16: Placeholder — solo registra en el log
-    logger.info(
-        f'[Tarea enviar_confirmacion] Procesando pedido '
-        f'{pedido.numero_pedido} para {pedido.cliente.correo}. '
-        f'Total: ${pedido.total_pagado}. '
-        f'Timestamp: {timezone.now().isoformat()}'
+    # ── Verificación de idempotencia ────────────────────────────────────
+    if pedido.correo_enviado:
+        logger.info(
+            f'[correo_confirmacion] Pedido {pedido.numero_pedido}: '
+            f'correo ya enviado anteriormente — skip.'
+        )
+        return {
+            'estado':    'skip',
+            'pedido_id': pedido_id,
+            'razon':     'correo ya enviado',
+        }
+
+    config = ConfiguracionERP.get_instance()
+
+    # ── Construir contexto del correo ───────────────────────────────────
+    # Subtotal por línea con Decimal: el snapshot guarda el precio como texto
+    # y {% widthratio %} redondea a enteros (no sirve para dinero).
+    items = []
+    for item in (pedido.items_snapshot or []):
+        precio   = Decimal(str(item.get('precio', '0')))
+        cantidad = int(item.get('cantidad', 0))
+        items.append({
+            **item,
+            'precio':   precio,
+            'cantidad': cantidad,
+            'subtotal': (precio * cantidad).quantize(Decimal('0.01')),
+        })
+
+    # Enlace a la tienda (el cliente no tiene acceso al admin del ERP)
+    url_pedido = f'{settings.SITE_URL}/catalogo/'
+
+    contexto = {
+        'pedido':     pedido,
+        'config':     config,
+        'items':      items,
+        'url_pedido': url_pedido,
+    }
+
+    # ── Renderizar templates ────────────────────────────────────────────
+    # render_to_string sin request (las tareas Celery no tienen request)
+    asunto     = (
+        f'Confirmación de pedido {pedido.numero_pedido} '
+        f'— {config.nombre_empresa}'
+    )
+    texto_plano = render_to_string(
+        'emails/confirmacion_pedido.txt', contexto
+    )
+    html_body   = render_to_string(
+        'emails/confirmacion_pedido.html', contexto
     )
 
-    # W17 implementará aquí:
-    #   from django.core.mail import send_mail
-    #   o envío via SendGrid API
+    # ── Construir el correo ────────────────────────────────────────────
+    correo_destino = pedido.cliente.correo
+    correo_origen  = settings.DEFAULT_FROM_EMAIL
 
+    mensaje = EmailMultiAlternatives(
+        subject      = asunto,
+        body         = texto_plano,      # versión texto plano (fallback)
+        from_email   = correo_origen,
+        to           = [correo_destino],
+    )
+    mensaje.attach_alternative(html_body, 'text/html')
+
+    # ── Enviar (con reintento si SendGrid falla) ───────────────────────
+    try:
+        mensaje.send()
+    except Exception as exc:
+        logger.error(
+            f'[correo_confirmacion] Error al enviar correo para pedido '
+            f'{pedido.numero_pedido}: {exc}'
+        )
+        # Reintento con Celery (hasta max_retries=3)
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+
+    # ── Marcar como enviado ────────────────────────────────────────────
+    # Va FUERA del try: si el guardado fallara, NO se reintenta el envío
+    # (el correo ya salió) y no se duplica.
+    pedido.correo_enviado = True
+    pedido.save(update_fields=['correo_enviado'])
+
+    logger.info(
+        f'[correo_confirmacion] Correo enviado a {correo_destino} '
+        f'para pedido {pedido.numero_pedido}.'
+    )
     return {
         'estado':    'ok',
         'pedido_id': pedido_id,
-        'numero':    pedido.numero_pedido,
-        'cliente':   pedido.cliente.correo,
+        'correo':    correo_destino,
     }
 
 
 @shared_task(
     bind=True,
-    autoretry_for=(Exception,),
-    max_retries=1,
     name='ventas.verificar_stock_bajo',
 )
 def verificar_stock_bajo(self, umbral: int = 5) -> dict:
-    """Verifica productos con stock por debajo del umbral.
+    """Verifica productos con stock bajo y envía alerta al admin.
 
-    W16: Solo registra en el log (placeholder).
-    W17: Enviará alerta por correo al administrador.
-    W18: Se programa para ejecutarse automáticamente cada hora.
+    W17: Si hay productos bajo el umbral, envía correo a ALERTAS_ADMIN_EMAIL.
 
     Args:
-        umbral: cantidad mínima de stock antes de alertar (default: 5).
+        umbral: cantidad mínima antes de alertar (default: 5).
 
     Returns:
-        dict con lista de productos con stock bajo.
+        dict con conteo y lista de productos con stock bajo.
     """
     from productos.models import Producto   # import local
 
     productos_bajos = list(
         Producto.objects
         .filter(activo=True, stock__lt=umbral)
-        .values('pk', 'nombre', 'stock')
+        .values('pk', 'nombre', 'stock', 'categoria__nombre')
         .order_by('stock')
     )
 
-    if productos_bajos:
-        logger.warning(
-            f'[Tarea verificar_stock] {len(productos_bajos)} producto(s) '
-            f'con stock < {umbral}: '
-            f'{[p["nombre"] for p in productos_bajos]}'
-        )
-    else:
+    if not productos_bajos:
         logger.info(
-            f'[Tarea verificar_stock] Todos los productos tienen '
-            f'stock >= {umbral}. OK.'
+            f'[stock_bajo] Todos los productos tienen stock ≥ {umbral}. OK.'
         )
+        return {'umbral': umbral, 'total': 0, 'productos_bajos': []}
+
+    logger.warning(
+        f'[stock_bajo] {len(productos_bajos)} producto(s) con stock < {umbral}.'
+    )
+
+    # Enviar alerta por correo si hay administradores configurados
+    if settings.ALERTAS_ADMIN_EMAIL:
+        _enviar_alerta_stock(productos_bajos, umbral)
 
     return {
         'umbral':          umbral,
-        'productos_bajos': productos_bajos,
         'total':           len(productos_bajos),
+        'productos_bajos': productos_bajos,
     }
+
+
+def _enviar_alerta_stock(productos_bajos: list, umbral: int) -> None:
+    """Envía el correo de alerta de stock al administrador.
+
+    Args:
+        productos_bajos: lista de dicts con nombre, stock y categoría.
+        umbral:          umbral mínimo configurado.
+    """
+    from configuracion.models import ConfiguracionERP   # import local
+
+    config = ConfiguracionERP.get_instance()
+    fecha  = timezone.now().strftime('%d/%m/%Y %H:%M')
+
+    url_admin = f'{settings.SITE_URL}/admin/productos/producto/'
+
+    contexto = {
+        'productos_bajos':  productos_bajos,
+        'total_productos':  len(productos_bajos),
+        'umbral':           umbral,
+        'fecha':            fecha,
+        'url_admin':        url_admin,
+        'config':           config,
+    }
+
+    asunto      = (
+        f'[ALERTA] {len(productos_bajos)} producto(s) con stock < {umbral}'
+    )
+    texto_plano = render_to_string('emails/alerta_stock.txt',  contexto)
+    html_body   = render_to_string('emails/alerta_stock.html', contexto)
+
+    admin_correo = settings.ALERTAS_ADMIN_EMAIL
+
+    mensaje = EmailMultiAlternatives(
+        subject    = asunto,
+        body       = texto_plano,
+        from_email = settings.DEFAULT_FROM_EMAIL,
+        to         = [admin_correo],
+    )
+    mensaje.attach_alternative(html_body, 'text/html')
+
+    try:
+        mensaje.send()
+        logger.info(
+            f'[stock_bajo] Alerta enviada a {admin_correo}. '
+            f'{len(productos_bajos)} productos.'
+        )
+    except Exception as exc:
+        logger.error(f'[stock_bajo] Error al enviar alerta: {exc}')
+
+        # ── W18: reporte diario (Celery Beat) ─────────────────────────────────────
+
+@shared_task(
+    bind=True,
+    max_retries=2,
+    name='ventas.reporte_ventas_diario',
+)
+def reporte_ventas_diario(self) -> dict:
+    """Genera y envía el reporte diario de ventas al administrador.
+
+    Se ejecuta automáticamente todos los días a la hora de
+    settings.REPORTE_DIARIO_HORA (default 21:00, hora de México)
+    mediante Celery Beat (configurado en CELERY_BEAT_SCHEDULE).
+
+    Cálculos realizados en SQL (no en Python) para máxima eficiencia:
+        - Total de pedidos pagados hoy
+        - Total facturado (pedidos pagados de la tienda + ventas internas)
+        - Top 5 productos por ingreso del día
+
+    Returns:
+        dict con total_pedidos, total_facturado y top_productos.
+
+    Raises:
+        celery.exceptions.Retry: si falla el envío del correo
+        (hasta 2 reintentos, 60 s entre cada uno).
+    """
+    from decimal import Decimal
+
+    from django.db.models import (
+        DecimalField, ExpressionWrapper, F, Sum,
+    )
+    from django.utils import timezone
+
+    from configuracion.models import ConfiguracionERP   # import local
+    from ventas.models        import DetalleVenta, Pedido  # import local
+
+    hoy    = timezone.localdate()
+    config = ConfiguracionERP.get_instance()
+
+    # ── 1. KPIs del día ───────────────────────────────────────────────
+    pedidos_hoy = Pedido.objects.filter(
+        fecha_pedido__date=hoy,
+        estado='pagado'
+    )
+    total_pedidos   = pedidos_hoy.count()
+    facturado_tienda = pedidos_hoy.aggregate(
+        total=Sum('total_pagado')
+    )['total'] or Decimal('0.00')
+
+    # ── 2. Top 5 productos por ingreso del día ─────────────────────────
+    # Dos fuentes: ventas internas (DetalleVenta) y compras de la tienda
+    # en línea (Pedido.items_snapshot). El checkout NO crea Venta, así
+    # que sin la segunda fuente las compras en línea nunca aparecían.
+    acumulado = {}   # nombre → {'unidades': int, 'ingreso': Decimal}
+
+    internas = (
+        DetalleVenta.objects
+        .filter(venta__fecha__date=hoy)
+        .values(nombre=F('producto__nombre'))
+        .annotate(
+            unidades=Sum('cantidad'),
+            ingreso=Sum(
+                ExpressionWrapper(
+                    F('cantidad') * F('precio_unitario'),
+                    output_field=DecimalField(max_digits=12, decimal_places=2)
+                )
+            )
+        )
+    )
+    ingreso_internas = Decimal('0.00')
+    for fila in internas:
+        ingreso_fila = fila['ingreso'] or Decimal('0.00')
+        dato = acumulado.setdefault(
+            fila['nombre'], {'unidades': 0, 'ingreso': Decimal('0.00')}
+        )
+        dato['unidades'] += fila['unidades'] or 0
+        dato['ingreso']  += ingreso_fila
+        ingreso_internas += ingreso_fila
+
+    for pedido in pedidos_hoy.only('items_snapshot'):
+        for item in _items_con_subtotal(pedido.items_snapshot):
+            dato = acumulado.setdefault(
+                item.get('nombre', '¿?'),
+                {'unidades': 0, 'ingreso': Decimal('0.00')},
+            )
+            dato['unidades'] += item['cantidad']
+            dato['ingreso']  += item['subtotal']
+
+    top_productos = sorted(
+        (
+            {'nombre': nombre, 'unidades': d['unidades'],
+             'ingreso': str(d['ingreso'].quantize(Decimal('0.01')))}
+            for nombre, d in acumulado.items()
+        ),
+        key=lambda x: Decimal(x['ingreso']),
+        reverse=True,
+    )[:5]
+
+    # El total incluye las ventas internas para que cuadre con el Top.
+    total_facturado = facturado_tienda + ingreso_internas
+
+    logger.info(
+        f'[reporte_diario] {hoy}: {total_pedidos} pedidos, '
+        f'${total_facturado} facturados, '
+        f'{len(top_productos)} productos top.'
+    )
+
+    # ── 3. Enviar correo al admin si está configurado ──────────────────
+    if settings.ADMINS:
+        try:
+            _enviar_reporte_ventas(
+                hoy, total_pedidos, total_facturado, top_productos, config
+            )
+        except Exception as exc:
+            logger.error(f'[reporte_diario] Error al enviar reporte: {exc}')
+            raise self.retry(exc=exc, countdown=60)
+
+    return {
+        'fecha':           str(hoy),
+        'total_pedidos':   total_pedidos,
+        'total_facturado': str(total_facturado),
+        'top_productos':   top_productos,
+    }
+
+
+def _enviar_reporte_ventas(
+    fecha, total_pedidos, total_facturado, top_productos, config
+) -> None:
+    """Envía el reporte diario al primer administrador configurado.
+
+    Args:
+        fecha:           Objeto date del día reportado.
+        total_pedidos:   Número de pedidos pagados.
+        total_facturado: Decimal con la suma total.
+        top_productos:   Lista de dicts con nombre, unidades, ingreso.
+        config:          Instancia de ConfiguracionERP.
+
+    Raises:
+        Exception: si el envío falla (la tarea reintenta).
+    """
+    url_admin = _url_absoluta('admin:ventas_pedido_changelist')
+    fecha_str = fecha.strftime('%d/%m/%Y')
+
+    contexto = {
+        'fecha':           fecha_str,
+        'config':          config,
+        'total_pedidos':   total_pedidos,
+        'total_facturado': total_facturado,
+        'top_productos':   top_productos,
+        'url_admin':       url_admin,
+        'hora_programada': settings.REPORTE_DIARIO_HORA,
+    }
+
+    asunto      = f'Reporte de ventas del {fecha_str} — {config.nombre_empresa}'
+    texto_plano = render_to_string('emails/reporte_ventas.txt',  contexto)
+    html_body   = render_to_string('emails/reporte_ventas.html', contexto)
+
+    _, admin_correo = settings.ADMINS[0]
+
+    mensaje = EmailMultiAlternatives(
+        subject    = asunto,
+        body       = texto_plano,
+        from_email = settings.DEFAULT_FROM_EMAIL,
+        to         = [admin_correo],
+    )
+    mensaje.attach_alternative(html_body, 'text/html')
+
+    # Sin try/except: si falla, la excepción sube a la tarea, que reintenta.
+    mensaje.send()
+    logger.info(f'[reporte_diario] Reporte enviado a {admin_correo}.')
+
+# -- Helpers de W18 (usados por reporte_ventas_diario) -----------------------
+
+def _url_absoluta(nombre_url, *args):
+    """URL absoluta de una vista, usando SITE_URL (o localhost en desarrollo)."""
+    from django.conf import settings
+    from django.urls import reverse
+    base = getattr(settings, 'SITE_URL', '') or 'http://localhost:8000'
+    return base.rstrip('/') + reverse(nombre_url, args=args)
+
+
+def _items_con_subtotal(items_snapshot):
+    """Items del snapshot con cantidad entera, precio y subtotal en Decimal."""
+    from decimal import Decimal
+    resultado = []
+    for item in items_snapshot or []:
+        cantidad = int(item.get('cantidad', 0))
+        precio = Decimal(str(item.get('precio', '0')))
+        resultado.append({**item, 'cantidad': cantidad, 'precio': precio,
+                          'subtotal': precio * cantidad})
+    return resultado

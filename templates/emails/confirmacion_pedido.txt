@@ -1,0 +1,23 @@
+{% autoescape off %}CONFIRMACIÓN DE PEDIDO {{ pedido.numero_pedido }}
+{{ config.nombre_empresa }}
+═══════════════════════════════════════════
+
+Hola, {{ pedido.cliente.nombre }}:
+
+Recibimos tu pago. Estos son los datos de tu compra:
+
+  Pedido:       {{ pedido.numero_pedido }}
+  Fecha:        {{ pedido.fecha_pedido|date:"d/m/Y H:i" }}
+  Total pagado: ${{ pedido.total_pagado }}
+
+{% if items %}ARTÍCULOS:
+{% for item in items %}
+  - {{ item.nombre }}
+    {{ item.cantidad }} x ${{ item.precio }} = ${{ item.subtotal }}
+{% endfor %}{% endif %}
+Consulta tu pedido: {{ url_pedido }}
+
+───────────────────────────────────────────
+Equipo de {{ config.nombre_empresa }}
+{{ config.nombre_empresa }}{% if config.rfc %} · RFC: {{ config.rfc }}{% endif %}
+{% endautoescape %}

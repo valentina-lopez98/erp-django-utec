@@ -1,0 +1,15 @@
+{% autoescape off %}ALERTA: STOCK BAJO EN {{ total_productos }} PRODUCTO(S)
+═══════════════════════════════════════════
+
+{{ total_productos }} producto(s) con stock menor a {{ umbral }} unidades
+(revisión del {{ fecha }}):
+
+{% for prod in productos_bajos %}
+  - {{ prod.nombre }}
+    Stock: {{ prod.stock }} · Categoría: {{ prod.categoria__nombre }}
+{% endfor %}
+Panel de administración: {{ url_admin }}
+
+───────────────────────────────────────────
+Mensaje automático del ERP Django
+{% endautoescape %}

@@ -102,3 +102,31 @@ posterior tenga una URL pública verificable desde el inicio del proyecto.
 > Esta espiral aporta evidencia para el **Capítulo 4** (Desarrollo),
 > sección 4.1 "Espiral 1: Infraestructura", y para el
 > **Capítulo 3** (Metodología), subsección "Ciclos del modelo espiral".
+
+# Ficha de Sistematización — Espiral 1
+## ERP Django · Espiral E1: Infraestructura
+## UTEC Celaya · Técnico en Programación (SEP 3061300006-23)
+
+| Campo | Contenido |
+|---|---|
+| **Número de espiral** | 1 |
+| **Nombre del ciclo** | Infraestructura |
+| **Semanas** | [completar] |
+| **Fecha de cierre** | [completar] |
+| **Responsable** | [Nombre del estudiante] |
+| **Asesor** | MC. Román Fernando López González |
+
+## 1. Objetivo del ciclo
+[completar]
+
+## 2. Tareas realizadas
+[completar]
+
+## 3. Evidencias
+[completar]
+
+## 4. Problemas encontrados
+[completar]
+
+## 5. Lecciones aprendidas
+[completar]

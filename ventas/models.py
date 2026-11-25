@@ -220,3 +220,11 @@ class Pedido(models.Model):
                     'a la fecha del pedido.'
                 ),
             })
+        
+        # ventas/models.py — en Pedido, después de items_snapshot:
+
+    correo_enviado = models.BooleanField(
+        default=False,
+        verbose_name='Correo de confirmación enviado',
+        help_text='True cuando se envió el correo de confirmación al cliente.'
+    )
