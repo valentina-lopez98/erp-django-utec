@@ -477,7 +477,7 @@
 
         <!-- ENVIAR REPORTE DE VENTAS POR CORREO -->
         {% if user.is_authenticated %}
-        <form method="post" action="{% url 'ventas:enviar_reporte' %}" style="display:inline;">
+        <form method="post" action="/ventas/reporte/enviar/" style="display:inline;">
             {% csrf_token %}
             <button type="submit" class="erp-nav-link"
                     style="border:none;cursor:pointer;"

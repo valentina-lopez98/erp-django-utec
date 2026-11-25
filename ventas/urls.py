@@ -1,11 +1,11 @@
-# ventas/urls.py
 from django.urls import path
 from . import views
 
 app_name = 'ventas'
 
 urlpatterns = [
-    path('<int:venta_id>/factura-pdf/', views.venta_pdf, name='factura_pdf'),
+    path('reporte/enviar/',             views.enviar_reporte_ventas,     name='enviar_reporte'),
+    path('<int:venta_id>/factura-pdf/', views.venta_pdf,                 name='factura_pdf'),
     path('',                            views.VentaListView.as_view(),   name='lista'),
     path('<int:venta_id>/',             views.VentaDetailView.as_view(), name='detalle'),
     path('nueva/',                      views.crear_venta,               name='crear'),
