@@ -8,13 +8,13 @@ Reporte: enviar_reporte_ventas (CSV por correo).
 import csv
 import io
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.mail import EmailMessage
-from django.db.models import Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -149,27 +149,38 @@ def enviar_reporte_ventas(request):
 
     hoy = timezone.localdate()
     desde = hoy - timedelta(days=30)
-    ventas_qs = (
+
+    # fecha__date evita el aviso de datetime ingenuo al comparar con una fecha
+    ventas = list(
         Venta.objects
         .select_related('cliente')
-        .filter(fecha__gte=desde)
+        .prefetch_related('detalles')
+        .filter(fecha__date__gte=desde)
         .order_by('fecha')
     )
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(['Venta', 'Fecha', 'Cliente', 'Total'])
-    for v in ventas_qs:
+
+    total_general = Decimal('0')
+    for v in ventas:
+        total_venta = v.total  # propiedad calculada en el modelo
+        total_general += total_venta
+
+        fecha_v = v.fecha
+        if timezone.is_aware(fecha_v):
+            fecha_v = timezone.localtime(fecha_v)
+
         writer.writerow([
             v.pk,
-            v.fecha.strftime('%Y-%m-%d'),
+            fecha_v.strftime('%Y-%m-%d'),
             str(v.cliente) if v.cliente else '',
-            v.total,
+            f'{total_venta:.2f}',
         ])
 
-    total_general = ventas_qs.aggregate(t=Sum('total'))['t'] or 0
     writer.writerow([])
-    writer.writerow(['', '', 'TOTAL', total_general])
+    writer.writerow(['', '', 'TOTAL', f'{total_general:.2f}'])
 
     # utf-8-sig para que Excel muestre bien acentos y la ñ
     contenido = buffer.getvalue().encode('utf-8-sig')
@@ -178,7 +189,7 @@ def enviar_reporte_ventas(request):
         subject=f'Reporte de ventas - {hoy:%Y-%m-%d}',
         body=(
             f'Adjunto el reporte de ventas de los últimos 30 días.\n'
-            f'Ventas: {ventas_qs.count()}\n'
+            f'Ventas: {len(ventas)}\n'
             f'Total: ${total_general:.2f}'
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
