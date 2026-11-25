@@ -26,7 +26,7 @@ from xhtml2pdf import pisa
 
 from configuracion.models import ConfiguracionERP
 from .forms import DetalleVentaForm, VentaForm
-from .models import DetalleVenta, Venta
+from .models import DetalleVenta, Venta, Pedido
 
 
 class VentaListView(ListView):
@@ -141,7 +141,7 @@ def venta_pdf(request, venta_id: int):
 @login_required
 @require_POST
 def enviar_reporte_ventas(request):
-    """Genera un reporte de ventas de los últimos 30 días y lo envía por correo (HTML + CSV)."""
+    """Reporte de los últimos 30 días: ventas internas + pedidos pagados de la tienda."""
     destinatario = request.user.email or getattr(settings, 'ADMIN_EMAIL', '')
     if not destinatario:
         messages.error(request, 'Tu usuario no tiene correo configurado.')
@@ -150,53 +150,68 @@ def enviar_reporte_ventas(request):
     hoy = timezone.localdate()
     desde = hoy - timedelta(days=30)
 
-    # fecha__date evita el aviso de datetime ingenuo al comparar con una fecha
+    # Fuente 1: ventas internas del ERP
     ventas = list(
         Venta.objects
         .select_related('cliente')
         .prefetch_related('detalles')
         .filter(fecha__date__gte=desde)
-        .order_by('fecha')
     )
+    # Fuente 2: compras pagadas en la tienda en línea
+    pedidos = list(
+        Pedido.objects
+        .select_related('cliente')
+        .filter(estado='pagado', fecha_pedido__date__gte=desde)
+    )
+
+    movimientos = []
+    for v in ventas:
+        fecha_v = timezone.localtime(v.fecha) if timezone.is_aware(v.fecha) else v.fecha
+        movimientos.append({
+            'fecha': fecha_v,
+            'pk': f'#{v.pk}',
+            'cliente': str(v.cliente) if v.cliente else '',
+            'total': v.total,
+        })
+    for p in pedidos:
+        fecha_p = timezone.localtime(p.fecha_pedido) if timezone.is_aware(p.fecha_pedido) else p.fecha_pedido
+        movimientos.append({
+            'fecha': fecha_p,
+            'pk': p.numero_pedido,
+            'cliente': str(p.cliente) if p.cliente else '',
+            'total': p.total_pagado,
+        })
+
+    movimientos.sort(key=lambda m: m['fecha'])
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(['Venta', 'Fecha', 'Cliente', 'Total'])
+    writer.writerow(['Referencia', 'Fecha', 'Cliente', 'Total'])
 
     filas = []
     total_general = Decimal('0')
-    for v in ventas:
-        total_venta = v.total  # propiedad calculada en el modelo
-        total_general += total_venta
-
-        fecha_v = v.fecha
-        if timezone.is_aware(fecha_v):
-            fecha_v = timezone.localtime(fecha_v)
-        fecha_txt = fecha_v.strftime('%Y-%m-%d')
-        cliente_txt = str(v.cliente) if v.cliente else ''
-
-        writer.writerow([v.pk, fecha_txt, cliente_txt, f'{total_venta:.2f}'])
+    for m in movimientos:
+        total_general += m['total']
+        fecha_txt = m['fecha'].strftime('%Y-%m-%d')
+        writer.writerow([m['pk'], fecha_txt, m['cliente'], f"{m['total']:.2f}"])
         filas.append({
-            'pk': v.pk,
+            'pk': m['pk'],
             'fecha': fecha_txt,
-            'cliente': cliente_txt,
-            'total': total_venta,
+            'cliente': m['cliente'],
+            'total': m['total'],
         })
 
     writer.writerow([])
     writer.writerow(['', '', 'TOTAL', f'{total_general:.2f}'])
-
-    # utf-8-sig para que Excel muestre bien acentos y la ñ
     contenido = buffer.getvalue().encode('utf-8-sig')
 
     contexto = {
         'filas': filas,
-        'cantidad': len(ventas),
+        'cantidad': len(movimientos),
         'total_general': total_general,
         'desde': desde,
         'hoy': hoy,
     }
-    # Plantillas propias del reporte manual (no las del reporte diario)
     html_body = render_to_string('emails/reporte_ventas_manual.html', contexto)
     texto_plano = render_to_string('emails/reporte_ventas_manual.txt', contexto)
 
