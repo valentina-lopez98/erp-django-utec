@@ -27,7 +27,7 @@ from ventas.tasks         import reporte_ventas_diario, verificar_stock_bajo
 
 EMAIL_SETTINGS = {
     'EMAIL_BACKEND':      'django.core.mail.backends.locmem.EmailBackend',
-    'ADMINS':             [('Admin Test', 'admin@test.com')],
+    'ALERTAS_ADMIN_EMAIL': 'admin@test.com',
     'DEFAULT_FROM_EMAIL': 'test@erp.com',
 }
 

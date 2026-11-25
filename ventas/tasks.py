@@ -341,7 +341,7 @@ def reporte_ventas_diario(self) -> dict:
     )
 
     # ── 3. Enviar correo al admin si está configurado ──────────────────
-    if settings.ADMINS:
+    if settings.ALERTAS_ADMIN_EMAIL:
         try:
             _enviar_reporte_ventas(
                 hoy, total_pedidos, total_facturado, top_productos, config
@@ -390,7 +390,7 @@ def _enviar_reporte_ventas(
     texto_plano = render_to_string('emails/reporte_ventas.txt',  contexto)
     html_body   = render_to_string('emails/reporte_ventas.html', contexto)
 
-    _, admin_correo = settings.ADMINS[0]
+    admin_correo = settings.ALERTAS_ADMIN_EMAIL
 
     mensaje = EmailMultiAlternatives(
         subject    = asunto,
